@@ -52,7 +52,7 @@ func addmessage(message models.Message) models.APIResponse {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			response := ModeratorResponse(message)
+			response = ModeratorResponse(message)
 			datachan <- response
 		}()
 	}
@@ -74,7 +74,7 @@ func addmessage(message models.Message) models.APIResponse {
 
 	insertData(message)
 	final_message := models.APIResponse{}
-	final_message = APIresponsefunc(message)
+	final_message = APIResponsefunc(message)
 	return final_message
 }
 
