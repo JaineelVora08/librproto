@@ -154,7 +154,7 @@ func getallacceptedmessages() []models.Message {
 		var msg models.Message
 		err := rows.Scan(&msg.Message_id, &msg.Context, &msg.Sent_timestamp, &msg.Status)
 		if err != nil {
-			return nil, err
+			return nil
 		}
 		messages = append(messages, msg)
 	}
@@ -172,7 +172,7 @@ func APIResponsefunc(message models.Message) models.APIResponse {
 	final_response := models.APIResponse{}
 
 	final_response.Message_id = message.Message_id
-	final_response.Submission_timestamp = message.Sent_timestamp
+	final_response.Sent_timestamp = message.Sent_timestamp
 	final_response.Status = message.Status
 
 	return final_response

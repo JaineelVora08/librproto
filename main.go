@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-	defer dbpool.Close()
 	fmt.Println("Hi")
 	r := router.Router()
 	fmt.Println("Server is getting started...")
