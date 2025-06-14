@@ -2,16 +2,18 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
+	"github.com/JaineelVora08/librproto/controller"
 	"github.com/JaineelVora08/librproto/router"
 )
 
 func main() {
-	fmt.Println("Hi")
+	fmt.Println("STARTING")
+	defer controller.Dbpool.Close()
+	fmt.Println("Router building...")
 	r := router.Router()
-	fmt.Println("Server is getting started...")
-	log.Fatal(http.ListenAndServe(":4000", r))
-	fmt.Println("Listening at port 4000 ...")
+	fmt.Println("Listening on port 8000...")
+	err := http.ListenAndServe(":8000", r)
+	fmt.Println("Server has exited with:", err)
 }

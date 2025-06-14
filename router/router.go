@@ -6,11 +6,10 @@ import (
 )
 
 func Router() *mux.Router {
-	r = mux.NewRouter()
-
+	r := mux.NewRouter()
 	r.HandleFunc("/fetch/{ts}", controller.GetTimeMessages).Methods("GET")
 	r.HandleFunc("/submit", controller.AddNewMessage).Methods("POST")
-	r.HandleFunc("/fetch", controller.GetAllAcceptedMessages).Methods("GET")
+	r.HandleFunc("/fetchall", controller.GetAllAcceptedMessages).Methods("GET")
 
 	return r
 }

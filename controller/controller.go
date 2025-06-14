@@ -11,49 +11,54 @@ import (
 	"sync"
 	"time"
 
-	"crypto/rand"
-	"math/big"
-
 	"github.com/JaineelVora08/librproto/models"
+	"github.com/JaineelVora08/librproto/moderator"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
-var dbpool *pgxpool.Pool
+var Dbpool *pgxpool.Pool
 
 func init() {
+	fmt.Println("Controller init started")
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	dbpool, err = pgxpool.New(context.Background(), os.Getenv("connection_string"))
+	Dbpool, err = pgxpool.New(context.Background(), os.Getenv("connection_string"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create connection pool: %v\n", err)
 		os.Exit(1)
 	}
 
-	_, err = dbpool.Exec(context.Background(), "CREATE TABLE IF NOT EXISTS messages (id UUID PRIMARY KEY, content TEXT NOT NULL, timestamp BIGINT NOT NULL, status VARCHAR(10) NOT NULL)")
+	_, err = Dbpool.Exec(context.Background(), "CREATE TABLE IF NOT EXISTS messages (id UUID PRIMARY KEY, content TEXT NOT NULL, timestamp BIGINT NOT NULL, status VARCHAR(10) NOT NULL)")
+	if err != nil {
+		log.Fatalf("Failed to create table: %v\n", err)
+	}
 }
 
 func addmessage(message models.Message) models.APIResponse {
 	message.Message_id = uuid.New().String()
 	message.Sent_timestamp = time.Now().Unix()
-	message.Status = "pending"
 
-	response := models.ModeratorResponse{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	datachan := make(chan models.ModeratorResponse)
+	datachan := make(chan models.ModeratorResponse, 3)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			response = ModeratorResponse(message)
-			datachan <- response
+			resp := moderator.ModeratorResponse(message)
+			select {
+			case datachan <- resp:
+			case <-ctx.Done():
+			}
 		}()
 	}
 	wg.Wait()
@@ -61,13 +66,13 @@ func addmessage(message models.Message) models.APIResponse {
 
 	count := 0
 	for response := range datachan {
-		if response.Status == "approved" {
+		if response.Status == "accepted" {
 			count++
 		}
 	}
 
 	if count >= 2 {
-		message.Status = "approved"
+		message.Status = "accepted"
 	} else {
 		message.Status = "rejected"
 	}
@@ -78,35 +83,15 @@ func addmessage(message models.Message) models.APIResponse {
 	return final_message
 }
 
-func ModeratorResponse(message models.Message) models.ModeratorResponse {
-	response := models.ModeratorResponse{}
-
-	response.Mod_id = uuid.New().String()
-
-	randomstat, _ := rand.Int(rand.Reader, big.NewInt(2))
-	randomstatus := int(randomstat.Int64())
-
-	if randomstatus == 0 {
-		response.Status = "approved"
-	} else {
-		response.Status = "rejected"
-	}
-
-	rawTime, _ := rand.Int(rand.Reader, big.NewInt(3))
-	randomtime := rawTime.Int64() + 1
-	response.Response_time = int(randomtime)
-
-	time.Sleep(time.Duration(response.Response_time) * time.Second)
-
-	response.Message_id = message.Message_id
-
-	return response
-}
-
 func insertData(message models.Message) {
-	_, err := dbpool.Exec(context.Background(), "INSERT INTO messages (id, content, timestamp, status) VALUES ($1, $2, $3, $4)", message.Message_id, message.Context, message.Sent_timestamp, message.Status)
+	fmt.Printf("Inserting message: %+v\n", message)
+
+	_, err := Dbpool.Exec(context.Background(),
+		"INSERT INTO messages (id, content, timestamp, status) VALUES ($1, $2, $3, $4)",
+		message.Message_id, message.Content, message.Sent_timestamp, message.Status)
+
 	if err != nil {
-		log.Fatalf("Unable to insert data: %v\n", err)
+		log.Printf("Insert failed: %v\n", err)
 	}
 }
 
@@ -120,7 +105,7 @@ func AddNewMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func gettimemessages(timestamp int64) []models.Message {
-	rows, _ := dbpool.Query(context.Background(), "SELECT id, content, timestamp, status FROM messages WHERE status=$1 AND timestamp=$2",
+	rows, _ := Dbpool.Query(context.Background(), "SELECT * FROM messages WHERE status=$1 AND timestamp=$2;",
 		"accepted", timestamp)
 
 	defer rows.Close()
@@ -128,7 +113,7 @@ func gettimemessages(timestamp int64) []models.Message {
 	var messages []models.Message
 	for rows.Next() {
 		var msg models.Message
-		_ = rows.Scan(&msg.Message_id, &msg.Context, &msg.Sent_timestamp, &msg.Status)
+		_ = rows.Scan(&msg.Message_id, &msg.Content, &msg.Sent_timestamp, &msg.Status)
 		messages = append(messages, msg)
 	}
 
@@ -142,20 +127,34 @@ func GetTimeMessages(w http.ResponseWriter, r *http.Request) {
 	timestampStr := params["ts"]
 	timestamp, _ := strconv.ParseInt(timestampStr, 10, 64)
 	final_messages := gettimemessages(timestamp)
+
+	if len(final_messages) == 0 {
+		json.NewEncoder(w).Encode(map[string]string{"message": "no message found"})
+		return
+	}
 	json.NewEncoder(w).Encode(final_messages)
+
 }
 
 func getallacceptedmessages() []models.Message {
-	rows, _ := dbpool.Query(context.Background(), "SELECT * from messages WHERE status=$1", "accepted")
+	query := "SELECT id, content, timestamp, status FROM messages WHERE status=$1"
+
+	rows, err := Dbpool.Query(context.Background(), query, "accepted")
+	if err != nil {
+		log.Printf("Query error: %v\n", err)
+		return nil
+	}
 	defer rows.Close()
 
 	var messages []models.Message
 	for rows.Next() {
 		var msg models.Message
-		err := rows.Scan(&msg.Message_id, &msg.Context, &msg.Sent_timestamp, &msg.Status)
+		err := rows.Scan(&msg.Message_id, &msg.Content, &msg.Sent_timestamp, &msg.Status)
 		if err != nil {
-			return nil
+			log.Printf("Row scan error: %v\n", err)
+			continue
 		}
+		log.Printf("Fetched row: %+v\n", msg)
 		messages = append(messages, msg)
 	}
 	return messages
@@ -165,7 +164,13 @@ func GetAllAcceptedMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Allow-Control-Allow-Methods", "GET")
 	final_messages := getallacceptedmessages()
+
+	if len(final_messages) == 0 {
+		json.NewEncoder(w).Encode(map[string]string{"message": "no message found"})
+		return
+	}
 	json.NewEncoder(w).Encode(final_messages)
+
 }
 
 func APIResponsefunc(message models.Message) models.APIResponse {

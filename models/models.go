@@ -2,7 +2,7 @@ package models
 
 type Message struct {
 	Message_id     string `json:"id"`
-	Context        string `json:"context"`
+	Content        string `json:"content"`
 	Sent_timestamp int64  `json:"timestamp"`
 	Status         string `json:"status"`
 }
