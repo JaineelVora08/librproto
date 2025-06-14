@@ -130,10 +130,9 @@ func GetTimeMessages(w http.ResponseWriter, r *http.Request) {
 
 	if len(final_messages) == 0 {
 		json.NewEncoder(w).Encode(map[string]string{"message": "no message found"})
-		return
+	} else {
+		json.NewEncoder(w).Encode(final_messages)
 	}
-	json.NewEncoder(w).Encode(final_messages)
-
 }
 
 func getallacceptedmessages() []models.Message {
@@ -167,10 +166,9 @@ func GetAllAcceptedMessages(w http.ResponseWriter, r *http.Request) {
 
 	if len(final_messages) == 0 {
 		json.NewEncoder(w).Encode(map[string]string{"message": "no message found"})
-		return
+	} else {
+		json.NewEncoder(w).Encode(final_messages)
 	}
-	json.NewEncoder(w).Encode(final_messages)
-
 }
 
 func APIResponsefunc(message models.Message) models.APIResponse {
