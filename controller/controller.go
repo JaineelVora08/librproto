@@ -78,8 +78,8 @@ func addmessage(message models.Message) models.APIResponse {
 	}
 
 	insertData(message)
-	final_message := models.APIResponse{}
-	final_message = APIResponsefunc(message)
+	// final_message := models.APIResponse{}
+	final_message := APIResponsefunc(message)
 	return final_message
 }
 
