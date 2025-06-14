@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,20 +24,52 @@ var Dbpool *pgxpool.Pool
 
 func init() {
 	fmt.Println("Controller init started")
+
 	err := godotenv.Load()
+
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	Dbpool, err = pgxpool.New(context.Background(), os.Getenv("connection_string"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to create connection pool: %v\n", err)
-		os.Exit(1)
+	ctx := context.Background()
+
+	adminConnStr := os.Getenv("initial_connection_string")
+	if adminConnStr == "" {
+		log.Fatal("initial_connection_string not set in .env")
 	}
 
-	_, err = Dbpool.Exec(context.Background(), "CREATE TABLE IF NOT EXISTS messages (id UUID PRIMARY KEY, content TEXT NOT NULL, timestamp BIGINT NOT NULL, status VARCHAR(10) NOT NULL)")
+	adminPool, err := pgxpool.New(ctx, adminConnStr)
 	if err != nil {
-		log.Fatalf("Failed to create table: %v\n", err)
+		log.Fatalf("Unable to connect to admin DB: %v", err)
+	}
+	defer adminPool.Close()
+
+	_, err = adminPool.Exec(ctx, "CREATE DATABASE libr")
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		log.Fatalf("Failed to create database: %v", err)
+	}
+	fmt.Println("Checked/created database 'libr'")
+
+	appConnStr := os.Getenv("connection_string")
+	if appConnStr == "" {
+		log.Fatal("connection_string not set in .env")
+	}
+
+	Dbpool, err = pgxpool.New(ctx, appConnStr)
+	if err != nil {
+		log.Fatalf("Unable to connect to 'libr' database: %v", err)
+	}
+
+	createTableSQL := `
+	CREATE TABLE IF NOT EXISTS messages (
+		id UUID PRIMARY KEY,
+		content TEXT NOT NULL,
+		timestamp BIGINT NOT NULL,
+		status VARCHAR(10) NOT NULL
+	)`
+	_, err = Dbpool.Exec(ctx, createTableSQL)
+	if err != nil {
+		log.Fatalf("Failed to create messages table: %v", err)
 	}
 }
 
